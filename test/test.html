@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Calm Feed for Facebook tests</title>
+  <style>
+    body { font: 14px/1.5 system-ui, sans-serif; margin: 16px; }
+    .pass { color: #137333; }
+    .fail { color: #c5221f; font-weight: 600; }
+    #fixtures { display: none; }
+  </style>
+</head>
+<body>
+  <h1>Calm Feed for Facebook tests</h1>
+  <p id="summary">Running…</p>
+  <ul id="results"></ul>
+  <div id="fixtures"></div>
+
+  <script src="../calm-feed-facebook.user.js"></script>
+  <script>
+    const { redirectFor, isFeedPath, navSelector, allowRedirect, redirectWorked, findBlocks, SETTINGS, LABELS } = window.CalmFeed;
+    const results = [];
+    const test = (name, fn) => {
+      try { fn(); results.push([name, null]); } catch (e) { results.push([name, e.message]); }
+    };
+    const eq = (actual, expected) => {
+      if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+        throw new Error(`expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+      }
+    };
+    const memoryStorage = () => {
+      const data = {};
+      return { getItem: k => (k in data ? data[k] : null), setItem: (k, v) => { data[k] = String(v); } };
+    };
+    const fixture = html => {
+      const root = document.getElementById('fixtures');
+      root.innerHTML = html;
+      return root;
+    };
+    const hiddenIds = (html, settings = SETTINGS) => findBlocks(fixture(html), settings, LABELS).map(b => b.id);
+    const allOff = { hideNotFollowing: false, hideSuggested: false, hideSponsored: false, hideReels: false, hideVideoTab: false };
+
+    // Redirects
+    test('Reels page goes home', () => eq(redirectFor('/reels/', '', SETTINGS), '/'));
+    test('scrolling Reels goes home', () => eq(redirectFor('/reels/123/', '', SETTINGS), '/'));
+    test('a single reel from a friend still opens', () => eq(redirectFor('/reel/123/', '', SETTINGS), null));
+    test("a friend's Reels tab on their profile still opens", () => eq(redirectFor('/friend/reels/', '', SETTINGS), null));
+    test('Video tab goes home', () => eq(redirectFor('/watch/', '', SETTINGS), '/'));
+    test('Video tab sections go home', () => eq(redirectFor('/watch/live/', '', SETTINGS), '/'));
+    test('a single video from a friend still opens', () => eq(redirectFor('/watch/', '?v=123', SETTINGS), null));
+    test('Marketplace stays put', () => eq(redirectFor('/marketplace/', '', SETTINGS), null));
+    test('a Marketplace item stays put', () => eq(redirectFor('/marketplace/item/123/', '', SETTINGS), null));
+    test('home stays put', () => eq(redirectFor('/', '', SETTINGS), null));
+    test('groups stay put', () => eq(redirectFor('/groups/123/', '', SETTINGS), null));
+    test('with everything off, nothing redirects', () => eq(redirectFor('/reels/', '', allOff), null));
+
+    // Where posts get hidden
+    test('home is the feed', () => eq([isFeedPath('/'), isFeedPath('/home.php')], [true, true]));
+    test('Marketplace is never treated as the feed', () => {
+      eq([isFeedPath('/marketplace/'), isFeedPath('/marketplace/item/1/')], [false, false]);
+    });
+    test('profiles and groups are never treated as the feed', () => {
+      eq([isFeedPath('/friend/'), isFeedPath('/groups/1/')], [false, false]);
+    });
+
+    // Tabs
+    const nav = fixture(`
+      <div role="tablist">
+        <a id="home" href="/" role="tab" aria-label="Home, tab 1 of 4"></a>
+        <a id="video" href="/watch/" role="tab" aria-label="Video, tab 2 of 4"></a>
+        <a id="market" href="/marketplace/" role="tab" aria-label="Marketplace, tab 3 of 4"></a>
+        <a id="reels" href="/reels/" aria-label="Reels"></a>
+        <a id="friendvideo" href="/watch/?v=123"></a>
+        <a id="friendreel" href="/reel/123/"></a>
+      </div>`);
+    const navHidden = sel => [...nav.querySelectorAll(sel)].map(e => e.id).sort();
+    test('Reels and Video tabs are hidden', () => eq(navHidden(navSelector(SETTINGS)), ['reels', 'video']));
+    test('Marketplace tab is kept', () => eq(navHidden(navSelector(SETTINGS)).includes('market'), false));
+    test('links to a single video or reel are kept', () => {
+      const hidden = navHidden(navSelector(SETTINGS));
+      eq([hidden.includes('friendvideo'), hidden.includes('friendreel')], [false, false]);
+    });
+    test('turning Video off leaves only Reels hidden', () =>
+      eq(navHidden(navSelector({ ...SETTINGS, hideVideoTab: false })), ['reels']));
+
+    // Posts
+    const feed = inner => `<main><div id="feed">${inner}</div></main>`;
+    test('a post with a Follow button is hidden, your own follows are not', () => eq(hiddenIds(feed(`
+      <article id="friend"><span>Friend</span><p>Hi</p></article>
+      <article id="page"><span>Page</span><span> · </span><span>Follow</span></article>`)), ['page']));
+    test('the " · Follow" form is recognised', () =>
+      eq(hiddenIds(feed(`<article id="p"><span>Page · Follow</span><span> · Follow</span></article><article></article>`)), ['p']));
+    test('Join and Add friend posts are hidden', () => eq(hiddenIds(feed(`
+      <article id="g"><span>Join</span></article>
+      <article id="a"><span>Add friend</span></article>
+      <article id="ok"><span>Friend</span></article>`)), ['g', 'a']));
+    test('a Sponsored post is hidden', () =>
+      eq(hiddenIds(feed(`<article id="ad"><span>Sponsored</span></article><article id="ok"></article>`)), ['ad']));
+    test('a post in the newer mobile site is recognised', () => eq(hiddenIds(feed(`
+      <div data-tracking-duration-id="1" id="n1"><span>Suggested for you</span></div>
+      <div data-tracking-duration-id="2" id="n2"><span>Friend</span></div>`)), ['n1']));
+    test('a post in the desktop site is recognised', () => eq(hiddenIds(feed(`
+      <div role="article" id="d1"><span>Sponsored</span></div>
+      <div role="article" id="d2"><span>Friend</span></div>`)), ['d1']));
+    test('a post in the older mobile site is recognised', () => eq(hiddenIds(feed(`
+      <div data-sigil="story-div m-story-view" id="o1"><span>Follow</span></div>
+      <div data-sigil="story-div m-story-view" id="o2"><span>Friend</span></div>`)), ['o1']));
+    test('a shared post hides the whole outer post', () => eq(hiddenIds(feed(`
+      <article id="outer"><span>Friend shared</span><article id="inner"><span>Suggested for you</span></article></article>
+      <article id="ok"></article>`)), ['outer']));
+    test('a "People you may know" row between posts is hidden, not the whole feed', () => eq(hiddenIds(feed(`
+      <article id="a1"></article>
+      <div id="pymk"><div><h3>People you may know</h3></div><ul><li>Stranger</li></ul></div>
+      <article id="a2"></article>`)), ['pymk']));
+    test('a Reels row between posts is hidden', () => eq(hiddenIds(feed(`
+      <article id="a1"></article>
+      <div id="r"><div><span>Reels and short videos</span></div></div>
+      <article id="a2"></article>`)), ['r']));
+    test('a caption that just mentions the words is left alone', () => eq(hiddenIds(feed(`
+      <article id="a1"><span>you should follow this recipe</span></article>
+      <article id="a2"><span>suggested for you by my mum</span></article>`)), []));
+    test('a Follow label outside any post hides nothing', () =>
+      eq(hiddenIds(`<div><span>Follow</span></div><article id="a1"></article>`), []));
+    test('a suggestion with no posts nearby hides nothing', () =>
+      eq(hiddenIds(`<div><div><span>Suggested for you</span></div></div>`), []));
+    test('tab bars are ignored', () =>
+      eq(hiddenIds(`<div role="tablist"><span>Reels</span></div><article id="a1"></article>`), []));
+    test('already hidden blocks are skipped', () =>
+      eq(hiddenIds(feed(`<article data-calm-feed-hidden><span>Sponsored</span></article><article></article>`)), []));
+    test('each setting can be turned off', () => {
+      const html = feed(`
+        <article id="f"><span>Follow</span></article>
+        <article id="s"><span>Suggested for you</span></article>
+        <article id="ad"><span>Sponsored</span></article>
+        <article id="r"><span>Reels</span></article>`);
+      eq(hiddenIds(html), ['f', 's', 'ad', 'r']);
+      eq(hiddenIds(html, { ...SETTINGS, hideNotFollowing: false }), ['s', 'ad', 'r']);
+      eq(hiddenIds(html, { ...SETTINGS, hideSuggested: false }), ['f', 'ad', 'r']);
+      eq(hiddenIds(html, { ...SETTINGS, hideSponsored: false }), ['f', 's', 'r']);
+      eq(hiddenIds(html, { ...SETTINGS, hideReels: false }), ['f', 's', 'ad']);
+      eq(hiddenIds(html, allOff), []);
+    });
+
+    // Loop guard
+    test('a redirect Facebook keeps undoing stops after 3 tries', () => {
+      const s = memoryStorage();
+      eq([1, 2, 3, 4, 5].map(() => allowRedirect('/', s)), [true, true, true, false, false]);
+    });
+    test('a redirect that worked is allowed again later', () => {
+      const s = memoryStorage();
+      for (let i = 0; i < 10; i++) {
+        eq(allowRedirect('/', s), true);
+        redirectWorked('/', s);
+      }
+    });
+
+    const failed = results.filter(([, err]) => err);
+    document.getElementById('summary').textContent =
+      `${results.length - failed.length} of ${results.length} passed` + (failed.length ? `, ${failed.length} failed` : '');
+    document.getElementById('summary').className = failed.length ? 'fail' : 'pass';
+    document.getElementById('results').innerHTML = results
+      .map(([name, err]) => `<li class="${err ? 'fail' : 'pass'}">${err ? '✗' : '✓'} ${name}${err ? ' — ' + err : ''}</li>`)
+      .join('');
+    window.testResults = { total: results.length, failed: failed.map(([n, e]) => n + ': ' + e) };
+  </script>
+</body>
+</html>
