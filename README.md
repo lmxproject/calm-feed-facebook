@@ -7,6 +7,7 @@
 - hides **ads** marked "Sponsored"
 - hides **Reels** in the feed and sends you home if you land on the Reels page
 - hides the **Video** tab and its endless feed
+- hides **"Open app"** buttons and bars
 
 **Marketplace is left completely alone.** Posts are only hidden on your home feed, so Marketplace, groups, profiles and notifications work as usual. Videos and reels that friends post or send you still open.
 
@@ -43,6 +44,7 @@ const SETTINGS = {
   hideSponsored: true,    // hide ads
   hideReels: true,        // hide Reels in the feed and leave the Reels page
   hideVideoTab: true,     // hide the Video tab and leave its endless feed
+  hideOpenApp: true,      // hide "Open app" buttons and bars
 };
 ```
 
@@ -65,6 +67,10 @@ Calm Feed checks this repository for new versions (`@updateURL`). When Facebook 
 
 - **Redirects.** Facebook's website changes pages without reloading, so the script checks the address a few times a second. If you're on the Reels page or the Video tab, it sends you home. If Facebook keeps undoing a redirect, the script gives up on that redirect for the rest of the tab.
 - **Hiding.** On the home feed, the script looks for the exact words above, such as "Follow" or "Sponsored", and hides the post they belong to. A caption that merely mentions those words is left alone. Rows that aren't posts, like "People you may know", are hidden on their own, never anything containing your normal posts.
+
+## Fixing it when Facebook changes
+
+[`debug/calm-feed-debug.user.js`](debug/calm-feed-debug.user.js) is a helper script that adds a yellow **Page info** button to Facebook. It shows how the page is built so the rules can be corrected. It sends nothing anywhere and leaves out post text and names, though a short caption containing a word like "friend" or "video" can still appear, so read it before sharing. Remove it when you're done.
 
 ## Testing
 

@@ -18,7 +18,7 @@
 
   <script src="../calm-feed-facebook.user.js"></script>
   <script>
-    const { redirectFor, isFeedPath, navSelector, allowRedirect, redirectWorked, findBlocks, SETTINGS, LABELS } = window.CalmFeed;
+    const { redirectFor, isFeedPath, navSelector, findNavButtons, findOpenAppBlocks, allowRedirect, redirectWorked, findBlocks, SETTINGS, LABELS } = window.CalmFeed;
     const results = [];
     const test = (name, fn) => {
       try { fn(); results.push([name, null]); } catch (e) { results.push([name, e.message]); }
@@ -83,8 +83,59 @@
     test('turning Video off leaves only Reels hidden', () =>
       eq(navHidden(navSelector({ ...SETTINGS, hideVideoTab: false })), ['reels']));
 
+    // Tabs whose links carry extra bits, as Facebook's usually do
+    test('Reels and Video links with extras are hidden, single ones are kept', () => {
+      const root = fixture(`
+        <a id="r1" href="/reel/?s=tab"></a>
+        <a id="r2" href="/reels/?ref=tab"></a>
+        <a id="r3" href="https://m.facebook.com/reel/?s=tab"></a>
+        <a id="v1" href="/watch/?ref=tab"></a>
+        <a id="v2" href="https://m.facebook.com/watch/?ref=tab"></a>
+        <a id="keep1" href="/reel/123/?s=feed"></a>
+        <a id="keep2" href="/watch/?v=123"></a>
+        <a id="keep3" href="https://m.facebook.com/watch/?v=123"></a>
+        <a id="keep4" href="/friend/reels/"></a>
+        <a id="keep5" href="/marketplace/?ref=tab"></a>`);
+      eq([...root.querySelectorAll(navSelector(SETTINGS))].map(e => e.id), ['r1', 'r2', 'r3', 'v1', 'v2']);
+    });
+    test('buttons named Reels or Video are hidden, Marketplace is kept', () => {
+      const root = fixture(`
+        <div><div role="button" id="b1" aria-label="Reels"></div>
+        <a id="b2" href="/x">Reel</a>
+        <div role="tab" id="b3" aria-label="Video, tab 2 of 5"></div>
+        <div role="button" id="keep1" aria-label="Marketplace"></div>
+        <a id="keep2" href="/y">Reels of cotton for sale</a></div>`);
+      eq(findNavButtons(root, SETTINGS, LABELS).map(e => e.id), ['b1', 'b2', 'b3']);
+    });
+    test('a button inside a post is left alone', () => {
+      const root = fixture(`<article><div role="button" id="b" aria-label="Video"></div></article>`);
+      eq(findNavButtons(root, SETTINGS, LABELS).length, 0);
+    });
+
+    // Open app
+    test('an Open app button in its own stuck bar hides the whole bar', () => {
+      const root = fixture(`<div id="bar" style="position:fixed"><div><a id="b" href="/x">Open app</a></div></div>`);
+      eq(findOpenAppBlocks(root, LABELS).map(e => e.id), ['bar']);
+    });
+    test('a bar that also holds the tabs keeps the tabs', () => {
+      const root = fixture(`<div id="bar" style="position:fixed"><a id="b" href="/x">Open app</a><div role="tab">Home</div></div>`);
+      eq(findOpenAppBlocks(root, LABELS).map(e => e.id), ['b']);
+    });
+    test('an App Store link is hidden whatever it says', () => {
+      const root = fixture(`<div><a id="b" href="https://apps.apple.com/app/id284882215">Install</a></div>`);
+      eq(findOpenAppBlocks(root, LABELS).map(e => e.id), ['b']);
+    });
+    test('a post that just mentions an app is left alone', () => {
+      const root = fixture(`<article><a href="/x">my new app</a></article>`);
+      eq(findOpenAppBlocks(root, LABELS).length, 0);
+    });
+
     // Posts
     const feed = inner => `<main><div id="feed">${inner}</div></main>`;
+    test('a label run together with the name is recognised', () => eq(hiddenIds(feed(`
+      <article id="p1"><span>Some Page · Follow</span></article>
+      <article id="p2"><span>Suggested for you • Some Page</span></article>
+      <article id="ok"><span>Friend · 2 hrs</span></article>`)), ['p1', 'p2']));
     test('a post with a Follow button is hidden, your own follows are not', () => eq(hiddenIds(feed(`
       <article id="friend"><span>Friend</span><p>Hi</p></article>
       <article id="page"><span>Page</span><span> · </span><span>Follow</span></article>`)), ['page']));

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Calm Feed for Facebook
 // @namespace    https://github.com/lmxproject/calm-feed-facebook
-// @version      0.1.0
+// @version      0.1.1
 // @description  Facebook on the web with only the people and pages you follow: no suggested posts, ads or Reels. Marketplace stays.
 // @author       lmxproject
 // @license      MIT
@@ -31,6 +31,7 @@
     hideSponsored: true, // hide ads
     hideReels: true, // hide Reels in the feed and leave the Reels page
     hideVideoTab: true, // hide the Video tab and leave its endless feed
+    hideOpenApp: true, // hide "Open app" buttons and bars
   };
 
   // Text Facebook shows on these posts (compared without case).
@@ -40,17 +41,67 @@
     suggested: ['suggested for you', 'people you may know', 'suggested groups', 'suggested pages'],
     sponsored: ['sponsored'],
     reels: ['reels', 'reels and short videos', 'short videos'],
+    reelsButton: ['reel', 'reels', 'reels and short videos', 'short videos'],
+    videoButton: ['video', 'watch'],
+    openApp: ['open app', 'open in app', 'open the app', 'use app', 'use the app', 'get app', 'get the app', 'open facebook', 'open facebook app'],
   };
 
   // Facebook serves different sites to different browsers, so look for a post in all of them.
   const POST_SELECTOR = 'article, [role="article"], [data-sigil~="story-div"], [data-tracking-duration-id]';
-  const REELS_NAV_SELECTOR = 'a[href="/reels/"], a[href="/reel/"], a[href$="facebook.com/reels/"], a[href$="facebook.com/reel/"], [role="tab"][aria-label^="reels" i]';
-  const VIDEO_NAV_SELECTOR = 'a[href="/watch/"], a[href="/watch"], a[href$="facebook.com/watch/"], [role="tab"][aria-label^="video" i], [role="tab"][aria-label^="watch" i]';
+  // Links to one reel or video (/reel/123, /watch/?v=123) are left out on purpose.
+  const REELS_NAV_SELECTOR = 'a[href="/reel"], a[href="/reel/"], a[href^="/reel/?"], a[href^="/reel?"], a[href="/reels"], a[href^="/reels/"], a[href^="/reels?"], a[href$="facebook.com/reel/"], a[href*="facebook.com/reel/?"], a[href*="facebook.com/reels/"], [role="tab"][aria-label^="reels" i]';
+  const VIDEO_NAV_SELECTOR = 'a[href="/watch"], a[href^="/watch/"]:not([href*="v="]), a[href^="/watch?"]:not([href*="v="]), a[href*="facebook.com/watch"]:not([href*="v="]), [role="tab"][aria-label^="video" i], [role="tab"][aria-label^="watch" i]';
+  const BUTTON_SELECTOR = 'a, button, [role="button"], [role="link"], [role="tab"]';
+  const APP_LINK_SELECTOR = 'a[href*="apps.apple.com"], a[href*="itunes.apple.com"], a[href^="itms"], a[href^="fb://"], a[href^="intent://"]';
   const HIDDEN_ATTR = 'data-calm-feed-hidden';
   const GUARD_KEY = 'calmFeed.redirects';
 
   function navSelector(settings) {
     return [settings.hideReels && REELS_NAV_SELECTOR, settings.hideVideoTab && VIDEO_NAV_SELECTOR].filter(Boolean).join(', ');
+  }
+
+  // The words a piece of text is made of: "Page name · Follow" gives "page name" and "follow".
+  function labelsIn(text) {
+    return text.split(/[·•|]/).map(part => part.trim().toLowerCase()).filter(Boolean);
+  }
+
+  // Buttons found by their wording, for when the link address doesn't give them away.
+  // Buttons inside a post are left alone, so a friend's reel keeps its controls.
+  function findNavButtons(root, settings, labels) {
+    const wanted = [
+      ...(settings.hideReels ? labels.reelsButton : []),
+      ...(settings.hideVideoTab ? labels.videoButton : []),
+    ];
+    if (!wanted.length) return [];
+    return [...root.querySelectorAll(BUTTON_SELECTOR)].filter(el => {
+      if (el.closest(POST_SELECTOR) || el.closest(`[${HIDDEN_ATTR}]`)) return false;
+      const name = (el.getAttribute('aria-label') || el.textContent || '').split(',')[0].trim().toLowerCase();
+      return wanted.includes(name);
+    });
+  }
+
+  // "Open app" buttons. If the button sits in its own bar stuck to the screen, the bar goes too,
+  // but never a bar with other things in it, such as the tab bar.
+  function findOpenAppBlocks(root, labels) {
+    const buttons = new Set(root.querySelectorAll(APP_LINK_SELECTOR));
+    root.querySelectorAll(BUTTON_SELECTOR).forEach(el => {
+      const name = (el.getAttribute('aria-label') || el.textContent || '').trim().toLowerCase();
+      if (labels.openApp.includes(name)) buttons.add(el);
+    });
+    const blocks = new Set();
+    buttons.forEach(button => {
+      if (button.closest(`[${HIDDEN_ATTR}]`)) return;
+      let block = button;
+      for (let node = button; node && node !== button.ownerDocument.body; node = node.parentElement) {
+        const position = getComputedStyle(node).position;
+        if (position === 'fixed' || position === 'sticky') {
+          if (node.textContent.trim().length <= 80 && !node.querySelector('[role="tablist"], [role="tab"]')) block = node;
+          break;
+        }
+      }
+      blocks.add(block);
+    });
+    return [...blocks];
   }
 
   // Where should this page send you instead? Returns a URL, or null to stay.
@@ -137,9 +188,9 @@
     const walker = doc.createTreeWalker(root, 4 /* NodeFilter.SHOW_TEXT */);
     const blocks = new Set();
     for (let text = walker.nextNode(); text; text = walker.nextNode()) {
-      const label = text.nodeValue.replace(/^[\s·•]+|[\s·•]+$/g, '').toLowerCase();
-      const isRow = rowLabels.includes(label);
-      if (!isRow && !postLabels.includes(label)) continue;
+      const found = labelsIn(text.nodeValue);
+      const isRow = found.some(label => rowLabels.includes(label));
+      if (!isRow && !found.some(label => postLabels.includes(label))) continue;
       const el = text.parentElement;
       if (!el || el.closest(`[${HIDDEN_ATTR}]`) || el.closest('[role="tablist"], nav')) continue;
       const block = postFor(el) || (isRow ? wrapperFor(el) : null);
@@ -186,7 +237,10 @@
     const scan = () => {
       scanQueued = false;
       if (nav) document.querySelectorAll(nav).forEach(hide);
-      if (isFeedPath(location.pathname) && document.body) findBlocks(document.body, SETTINGS, LABELS).forEach(hide);
+      if (!document.body) return;
+      findNavButtons(document.body, SETTINGS, LABELS).forEach(hide);
+      if (SETTINGS.hideOpenApp) findOpenAppBlocks(document.body, LABELS).forEach(hide);
+      if (isFeedPath(location.pathname)) findBlocks(document.body, SETTINGS, LABELS).forEach(hide);
     };
 
     // Facebook changes pages without reloading, so keep watching the address and the page.
@@ -204,5 +258,5 @@
 
   const onFacebook = typeof location !== 'undefined' && /(^|\.)facebook\.com$/.test(location.hostname);
   if (onFacebook) start();
-  else globalThis.CalmFeed = { redirectFor, isFeedPath, navSelector, allowRedirect, redirectWorked, findBlocks, SETTINGS, LABELS };
+  else globalThis.CalmFeed = { redirectFor, isFeedPath, navSelector, findNavButtons, findOpenAppBlocks, allowRedirect, redirectWorked, findBlocks, SETTINGS, LABELS };
 })();
