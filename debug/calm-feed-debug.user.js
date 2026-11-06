@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Calm Feed page info
 // @namespace    https://github.com/lmxproject/calm-feed-facebook
-// @version      0.1.0
+// @version      0.1.2
 // @description  Helper for fixing Calm Feed: shows how Facebook's page is built, without post contents. Remove it when you're done.
 // @author       lmxproject
 // @license      MIT
@@ -88,6 +88,19 @@
     out.push(`host ${location.hostname} path ${location.pathname === '/' ? '/' : '/…'} lang ${document.documentElement.lang} body.class ${document.body.className.slice(0, 80)}`);
     out.push('COUNTS ' + COUNTS.map(s => `${s}=${document.querySelectorAll(s).length}`).join('  '));
 
+    // What's left on screen, post by post: only button words and whether "sponsored" appears anywhere.
+    const hidden = '[data-calm-feed-hidden]';
+    const posts = [...document.querySelectorAll('[data-tracking-duration-id], [data-sigil~="story-div"], article, [role="article"]')];
+    out.push(`\nPOSTS hidden by Calm Feed ${posts.filter(p => p.closest(hidden)).length} of ${posts.length}`);
+    posts.filter(p => !p.closest(hidden)).slice(0, 25).forEach((post, i) => {
+      const joined = post.textContent.toLowerCase().replace(/[^a-z]/g, '');
+      const aria = [...post.querySelectorAll('[aria-label]')].some(el => /sponsor/i.test(el.getAttribute('aria-label')));
+      const buttons = [...post.querySelectorAll('[role="button"], button')]
+        .map(el => el.textContent.trim().replace(/\s+/g, ' '))
+        .filter(text => text && text.length <= 20 && /^[\p{L} ]+$/u.test(text) && text.split(' ').length <= 3);
+      out.push(`#${i} sponsoredText=${joined.includes('sponsored')} sponsoredAria=${aria} imgs=${post.querySelectorAll('img').length} buttons=[${[...new Set(buttons)].join(', ')}]`);
+    });
+
     out.push('\nFIXED/STICKY');
     [...document.body.querySelectorAll('*')].filter(el => /fixed|sticky/.test(getComputedStyle(el).position)).slice(0, 15).forEach(el => {
       const r = el.getBoundingClientRect();
@@ -143,12 +156,17 @@
     close.style.cssText = copy.style.cssText;
     close.onclick = () => panel.remove();
     panel.append(box, copy, close);
-    document.body.appendChild(panel);
+    document.documentElement.appendChild(panel);
   }
 
   const button = document.createElement('button');
   button.textContent = 'Page info';
-  button.style.cssText = 'position:fixed;top:60px;right:8px;z-index:2147483646;padding:8px 12px;font-size:14px;background:#ffeb3b;color:#000;border:1px solid #000;border-radius:6px;';
+  button.style.cssText = 'position:fixed;top:35%;right:8px;z-index:2147483646;padding:8px 12px;font-size:14px;background:#ffeb3b;color:#000;border:1px solid #000;border-radius:6px;';
   button.onclick = show;
-  document.body.appendChild(button);
+  // Outside the page body, and put back if removed, because Facebook rebuilds its page as it loads.
+  const place = () => {
+    if (!button.isConnected) document.documentElement.appendChild(button);
+  };
+  place();
+  setInterval(place, 1000);
 })();

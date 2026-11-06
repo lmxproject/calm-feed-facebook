@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Calm Feed for Facebook
 // @namespace    https://github.com/lmxproject/calm-feed-facebook
-// @version      0.1.1
+// @version      0.1.2
 // @description  Facebook on the web with only the people and pages you follow: no suggested posts, ads or Reels. Marketplace stays.
 // @author       lmxproject
 // @license      MIT
@@ -29,6 +29,7 @@
     hideNotFollowing: true, // hide posts with a "Follow", "Join" or "Add friend" button
     hideSuggested: true, // hide "Suggested for you" and "People you may know"
     hideSponsored: true, // hide ads
+    hideAdButtons: true, // also hide posts with an ad button like "Shop now" or "Learn more"
     hideReels: true, // hide Reels in the feed and leave the Reels page
     hideVideoTab: true, // hide the Video tab and leave its endless feed
     hideOpenApp: true, // hide "Open app" buttons and bars
@@ -39,7 +40,8 @@
   const LABELS = {
     notFollowing: ['follow', 'join', 'join group', 'add friend'],
     suggested: ['suggested for you', 'people you may know', 'suggested groups', 'suggested pages'],
-    sponsored: ['sponsored'],
+    sponsored: ['sponsored', 'paid partnership'],
+    adButtons: ['learn more', 'shop now', 'sign up', 'install now', 'book now', 'get offer', 'apply now', 'get quote', 'order now', 'buy now', 'buy tickets', 'play game', 'donate now', 'see menu', 'get showtimes', 'listen now'],
     reels: ['reels', 'reels and short videos', 'short videos'],
     reelsButton: ['reel', 'reels', 'reels and short videos', 'short videos'],
     videoButton: ['video', 'watch'],
@@ -61,8 +63,30 @@
   }
 
   // The words a piece of text is made of: "Page name · Follow" gives "page name" and "follow".
+  // Facebook mixes in invisible characters and icon-font symbols, so those are dealt with first.
   function labelsIn(text) {
-    return text.split(/[·•|]/).map(part => part.trim().toLowerCase()).filter(Boolean);
+    return text
+      .replace(/[​-‍⁠﻿­]/g, '')
+      .replace(/[-\u{F0000}-\u{10FFFD}]/gu, '·')
+      .split(/[·•|]/)
+      .map(part => part.trim().replace(/\s+/g, ' ').toLowerCase())
+      .filter(Boolean);
+  }
+
+  // Ads that dodge the plain text check: the word split across several pieces,
+  // kept only in an aria-label, or a post with an ad button.
+  function findAds(root, settings, labels) {
+    if (!settings.hideSponsored) return [];
+    const has = (text, wanted) => labelsIn(text).some(label => wanted.includes(label));
+    const blocks = new Set();
+    root.querySelectorAll(POST_SELECTOR).forEach(post => {
+      if (post.closest(`[${HIDDEN_ATTR}]`)) return;
+      const isAd = [...post.querySelectorAll('[aria-label]')].some(el => has(el.getAttribute('aria-label'), labels.sponsored))
+        || [...post.querySelectorAll('span, a, [role="link"]')].some(el => el.textContent.length <= 40 && has(el.textContent, labels.sponsored))
+        || (settings.hideAdButtons && [...post.querySelectorAll('a, button, [role="button"]')].some(el => el.textContent.length <= 30 && has(el.textContent, labels.adButtons)));
+      if (isAd) blocks.add(postFor(post));
+    });
+    return [...blocks];
   }
 
   // Buttons found by their wording, for when the link address doesn't give them away.
@@ -240,7 +264,10 @@
       if (!document.body) return;
       findNavButtons(document.body, SETTINGS, LABELS).forEach(hide);
       if (SETTINGS.hideOpenApp) findOpenAppBlocks(document.body, LABELS).forEach(hide);
-      if (isFeedPath(location.pathname)) findBlocks(document.body, SETTINGS, LABELS).forEach(hide);
+      if (isFeedPath(location.pathname)) {
+        findBlocks(document.body, SETTINGS, LABELS).forEach(hide);
+        findAds(document.body, SETTINGS, LABELS).forEach(hide);
+      }
     };
 
     // Facebook changes pages without reloading, so keep watching the address and the page.
@@ -258,5 +285,5 @@
 
   const onFacebook = typeof location !== 'undefined' && /(^|\.)facebook\.com$/.test(location.hostname);
   if (onFacebook) start();
-  else globalThis.CalmFeed = { redirectFor, isFeedPath, navSelector, findNavButtons, findOpenAppBlocks, allowRedirect, redirectWorked, findBlocks, SETTINGS, LABELS };
+  else globalThis.CalmFeed = { redirectFor, isFeedPath, navSelector, findNavButtons, findOpenAppBlocks, findAds, allowRedirect, redirectWorked, findBlocks, SETTINGS, LABELS };
 })();

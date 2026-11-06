@@ -4,7 +4,7 @@
 
 - hides posts from pages, groups and people you don't follow (posts with a **Follow**, **Join** or **Add friend** button)
 - hides **"Suggested for you"** and **"People you may know"**
-- hides **ads** marked "Sponsored"
+- hides **ads**: posts marked "Sponsored", even when the word is scrambled, and posts with an ad button like "Shop now"
 - hides **Reels** in the feed and sends you home if you land on the Reels page
 - hides the **Video** tab and its endless feed
 - hides **"Open app"** buttons and bars
@@ -42,6 +42,7 @@ const SETTINGS = {
   hideNotFollowing: true, // hide posts with a "Follow", "Join" or "Add friend" button
   hideSuggested: true,    // hide "Suggested for you" and "People you may know"
   hideSponsored: true,    // hide ads
+  hideAdButtons: true,    // also hide posts with an ad button like "Shop now" or "Learn more"
   hideReels: true,        // hide Reels in the feed and leave the Reels page
   hideVideoTab: true,     // hide the Video tab and leave its endless feed
   hideOpenApp: true,      // hide "Open app" buttons and bars
@@ -61,7 +62,8 @@ Calm Feed checks this repository for new versions (`@updateURL`). When Facebook 
 - **Facebook changes its site often**, and serves different versions to different browsers. Something may slip through or break until the script is updated.
 - **The feed order stays Facebook's own.** Calm Feed removes posts from the normal feed; it doesn't switch to a newest-first feed.
 - **A friend's share can be hidden too.** If a friend shares a post from a page you don't follow and it shows a **Follow** button, the whole post is hidden. If that hides too much, set `hideNotFollowing` to `false`.
-- **Ads whose label is scrambled.** Facebook sometimes breaks up the word "Sponsored" in the page to dodge blockers. Those ads can get through.
+- **Some ads can still get through.** Facebook works to dodge blockers, for example by showing "Sponsored" as a picture. An ad like that with no ad button won't be caught.
+- **Ad buttons can catch normal posts.** A page you follow might post a link with a "Learn more" button, and that post gets hidden too. If you miss those, set `hideAdButtons` to `false`.
 
 ## How it works
 

@@ -18,7 +18,7 @@
 
   <script src="../calm-feed-facebook.user.js"></script>
   <script>
-    const { redirectFor, isFeedPath, navSelector, findNavButtons, findOpenAppBlocks, allowRedirect, redirectWorked, findBlocks, SETTINGS, LABELS } = window.CalmFeed;
+    const { redirectFor, isFeedPath, navSelector, findNavButtons, findOpenAppBlocks, findAds, allowRedirect, redirectWorked, findBlocks, SETTINGS, LABELS } = window.CalmFeed;
     const results = [];
     const test = (name, fn) => {
       try { fn(); results.push([name, null]); } catch (e) { results.push([name, e.message]); }
@@ -191,6 +191,37 @@
       eq(hiddenIds(html, { ...SETTINGS, hideReels: false }), ['f', 's', 'ad']);
       eq(hiddenIds(html, allOff), []);
     });
+
+    // Ads
+    const adIds = (html, settings = SETTINGS) => findAds(fixture(html), settings, LABELS).map(b => b.id);
+    const P = 'data-tracking-duration-id="1"';
+    test('"Sponsored" next to an icon symbol is hidden', () => eq(hiddenIds(feed(`
+      <div ${P} id="ad"><span>Sponsored \u{F0000}</span></div>
+      <div ${P} id="ok"><span>2 hrs \u{F0000}</span></div>`)), ['ad']));
+    test('"Sponsored" with invisible characters is hidden', () =>
+      eq(hiddenIds(feed(`<div ${P} id="ad"><span>Spon​sored</span></div><div ${P} id="ok"></div>`)), ['ad']));
+    test('"Sponsored" split across pieces is hidden', () =>
+      eq(adIds(feed(`<div ${P} id="ad"><span><span>Spon</span><span>sor</span><span>ed</span></span></div><div ${P} id="ok"><span>Friend</span></div>`)), ['ad']));
+    test('"Sponsored" only in an aria-label is hidden', () =>
+      eq(adIds(feed(`<div ${P} id="ad"><div aria-label="Sponsored"></div></div><div ${P} id="ok"></div>`)), ['ad']));
+    test('a post with an ad button is hidden', () => eq(adIds(feed(`
+      <div ${P} id="ad"><div role="button"><span>Shop now</span></div></div>
+      <div ${P} id="ad2"><a href="/x">Learn more</a></div>
+      <div ${P} id="ok"><div role="button"><span>Like</span></div></div>`)), ['ad', 'ad2']));
+    test('a nested ad hides the whole outer post', () =>
+      eq(adIds(feed(`<div ${P} id="outer"><div ${P} id="inner"><span>Sponsored</span></div></div>`)), ['outer']));
+    test('a caption mentioning sponsors or shopping is left alone', () => eq(adIds(feed(`
+      <div ${P} id="a"><span>we got sponsored by my mum today</span></div>
+      <div ${P} id="b"><span>Shop now</span></div>
+      <div ${P} id="c"><a href="/x">you should really learn more about knitting, it is lovely</a></div>`)), []));
+    test('ad buttons can be turned off on their own', () => {
+      const html = feed(`<div ${P} id="b"><a href="/x">Shop now</a></div><div ${P} id="s"><span><span>Spon</span><span>sored</span></span></div>`);
+      eq(adIds(html), ['b', 's']);
+      eq(adIds(html, { ...SETTINGS, hideAdButtons: false }), ['s']);
+      eq(adIds(html, { ...SETTINGS, hideSponsored: false }), []);
+    });
+    test('already hidden ads are skipped', () =>
+      eq(adIds(feed(`<div ${P} data-calm-feed-hidden><span>Sponsored</span></div>`)), []));
 
     // Loop guard
     test('a redirect Facebook keeps undoing stops after 3 tries', () => {
