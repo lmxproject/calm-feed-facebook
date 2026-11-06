@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Calm Feed for Facebook
 // @namespace    https://github.com/lmxproject/calm-feed-facebook
-// @version      0.1.2
+// @version      0.1.3
 // @description  Facebook on the web with only the people and pages you follow: no suggested posts, ads or Reels. Marketplace stays.
 // @author       lmxproject
 // @license      MIT
@@ -40,7 +40,7 @@
   const LABELS = {
     notFollowing: ['follow', 'join', 'join group', 'add friend'],
     suggested: ['suggested for you', 'people you may know', 'suggested groups', 'suggested pages'],
-    sponsored: ['sponsored', 'paid partnership'],
+    sponsored: ['sponsored', 'ad', 'paid partnership'],
     adButtons: ['learn more', 'shop now', 'sign up', 'install now', 'book now', 'get offer', 'apply now', 'get quote', 'order now', 'buy now', 'buy tickets', 'play game', 'donate now', 'see menu', 'get showtimes', 'listen now'],
     reels: ['reels', 'reels and short videos', 'short videos'],
     reelsButton: ['reel', 'reels', 'reels and short videos', 'short videos'],

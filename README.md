@@ -4,7 +4,7 @@
 
 - hides posts from pages, groups and people you don't follow (posts with a **Follow**, **Join** or **Add friend** button)
 - hides **"Suggested for you"** and **"People you may know"**
-- hides **ads**: posts marked "Sponsored", even when the word is scrambled, and posts with an ad button like "Shop now"
+- hides **ads**: posts marked "Ad" or "Sponsored", even when the word is scrambled, and posts with an ad button like "Shop now"
 - hides **Reels** in the feed and sends you home if you land on the Reels page
 - hides the **Video** tab and its endless feed
 - hides **"Open app"** buttons and bars

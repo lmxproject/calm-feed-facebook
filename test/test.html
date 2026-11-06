@@ -195,6 +195,15 @@
     // Ads
     const adIds = (html, settings = SETTINGS) => findAds(fixture(html), settings, LABELS).map(b => b.id);
     const P = 'data-tracking-duration-id="1"';
+    test('a post labelled just "Ad" is hidden', () => eq(hiddenIds(feed(`
+      <div ${P} id="ad1"><span>Some Shop</span><span>Ad</span></div>
+      <div ${P} id="ad2"><span>Some Shop</span><span>Ad · \u{F0000}</span></div>
+      <div ${P} id="ok"><span>Friend</span><span>2 hrs</span></div>`)), ['ad1', 'ad2']));
+    test('words containing "ad" are left alone', () => eq(hiddenIds(feed(`
+      <div ${P} id="a"><span>Ada</span></div>
+      <div ${P} id="b"><span>my dad</span></div>
+      <div ${P} id="c"><span>ad hoc plans for the weekend</span></div>
+      <div ${P} id="d"><span>Read more</span></div>`)), []));
     test('"Sponsored" next to an icon symbol is hidden', () => eq(hiddenIds(feed(`
       <div ${P} id="ad"><span>Sponsored \u{F0000}</span></div>
       <div ${P} id="ok"><span>2 hrs \u{F0000}</span></div>`)), ['ad']));
